@@ -1,0 +1,12 @@
+pymupdf>=1.24
+pypdf>=4.0
+nltk>=3.9
+scikit-learn>=1.4
+numpy>=1.26
+networkx>=3.2
+streamlit>=1.35
+genanki>=0.13
+reportlab>=4.0
+anthropic>=0.70
+pytest>=8.0
+pandas>=2.0

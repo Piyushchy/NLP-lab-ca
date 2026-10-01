@@ -1,0 +1,79 @@
+[
+  {
+    "system": "naive cloze baseline",
+    "n_questions": 15,
+    "rougeL_f1": 0.4176,
+    "bleu4": 0.1048,
+    "reference_concept_coverage": 0.3462,
+    "answer_is_key_concept": 0.2667,
+    "distractor_is_key_concept": 0.0833,
+    "grounded_rate": 1.0,
+    "answerable_rate": 1.0,
+    "mcq_validity": 1.0,
+    "diversity_1_minus_mean_jaccard": 0.8248,
+    "type_distribution": {
+      "mcq": 8,
+      "fill_blank": 7
+    },
+    "difficulty_distribution": {
+      "medium": 15
+    },
+    "bloom_distribution": {
+      "remember": 15
+    }
+  },
+  {
+    "system": "classic NLP, no quality filter",
+    "n_questions": 15,
+    "rougeL_f1": 0.5162,
+    "bleu4": 0.1287,
+    "reference_concept_coverage": 0.8077,
+    "answer_is_key_concept": 1.0,
+    "distractor_is_key_concept": 0.5,
+    "grounded_rate": 1.0,
+    "answerable_rate": 1.0,
+    "mcq_validity": 1.0,
+    "diversity_1_minus_mean_jaccard": 0.9059,
+    "type_distribution": {
+      "mcq": 4,
+      "true_false": 4,
+      "fill_blank": 4,
+      "short_answer": 3
+    },
+    "difficulty_distribution": {
+      "easy": 6,
+      "medium": 9
+    },
+    "bloom_distribution": {
+      "understand": 8,
+      "remember": 7
+    }
+  },
+  {
+    "system": "classic NLP (full pipeline)",
+    "n_questions": 15,
+    "rougeL_f1": 0.5162,
+    "bleu4": 0.1287,
+    "reference_concept_coverage": 0.8077,
+    "answer_is_key_concept": 1.0,
+    "distractor_is_key_concept": 0.5,
+    "grounded_rate": 1.0,
+    "answerable_rate": 1.0,
+    "mcq_validity": 1.0,
+    "diversity_1_minus_mean_jaccard": 0.9059,
+    "type_distribution": {
+      "mcq": 4,
+      "true_false": 4,
+      "fill_blank": 4,
+      "short_answer": 3
+    },
+    "difficulty_distribution": {
+      "easy": 6,
+      "medium": 9
+    },
+    "bloom_distribution": {
+      "understand": 8,
+      "remember": 7
+    }
+  }
+]

@@ -1,0 +1,32 @@
+{
+  "source": "data/sample_textbook.pdf",
+  "note": "Teacher-written reference questions for the sample chapter, used for reference-based evaluation (BLEU / ROUGE-L / concept coverage).",
+  "questions": [
+    {"question": "What is the process by which green plants convert light energy into chemical energy called?", "answer": "photosynthesis"},
+    {"question": "Why are green plants called autotrophs?", "answer": "they make their own food from simple inorganic substances"},
+    {"question": "What are the raw materials of photosynthesis?", "answer": "carbon dioxide and water"},
+    {"question": "Which gas is released as a by-product of photosynthesis?", "answer": "oxygen"},
+    {"question": "What is the main site of photosynthesis in most plants?", "answer": "leaf"},
+    {"question": "In which organelles does photosynthesis take place?", "answer": "chloroplasts"},
+    {"question": "Which green pigment absorbs light energy?", "answer": "chlorophyll"},
+    {"question": "Why do leaves look green?", "answer": "chlorophyll reflects green light"},
+    {"question": "What is the fluid-filled space of the chloroplast that surrounds the thylakoids called?", "answer": "stroma"},
+    {"question": "Through which pores does gas exchange take place in a leaf?", "answer": "stomata"},
+    {"question": "Which cells control the opening and closing of a stoma?", "answer": "guard cells"},
+    {"question": "Where do the light-dependent reactions take place?", "answer": "thylakoid membranes"},
+    {"question": "What is photolysis?", "answer": "the splitting of water molecules by light energy"},
+    {"question": "Which energy carriers are produced during the light-dependent reactions?", "answer": "ATP and NADPH"},
+    {"question": "What is the main energy currency of the cell?", "answer": "ATP"},
+    {"question": "Where does the Calvin cycle take place?", "answer": "stroma"},
+    {"question": "What is the first stage of the Calvin cycle?", "answer": "carbon fixation"},
+    {"question": "Which enzyme catalyses carbon fixation?", "answer": "rubisco"},
+    {"question": "What is a limiting factor?", "answer": "a factor that is in shortest supply and therefore restricts the rate of a process"},
+    {"question": "Name the main limiting factors of photosynthesis.", "answer": "light intensity, carbon dioxide concentration and temperature"},
+    {"question": "What is the compensation point?", "answer": "the light intensity at which the rate of photosynthesis equals the rate of respiration"},
+    {"question": "Why does the rate of photosynthesis fall at very high temperatures?", "answer": "enzymes are denatured"},
+    {"question": "Which mineral is an essential part of the chlorophyll molecule?", "answer": "magnesium"},
+    {"question": "What is chlorosis?", "answer": "the yellowing of leaves between the veins"},
+    {"question": "Which tissue transports water and mineral ions from the roots to the leaves?", "answer": "xylem"},
+    {"question": "What is translocation?", "answer": "the movement of sucrose and amino acids through the phloem"}
+  ]
+}
