@@ -48,13 +48,14 @@ def generate(
     seed: int = 13,
     use_filter: bool = True,
     api_key: Optional[str] = None,
+    model: Optional[str] = None,
 ) -> QuizResult:
     """Generate a quiz and flashcards from a PDF.
 
-    engine: "classic" (NLP only), "llm" (Claude, retrieval-grounded) or "auto"
+    engine: "classic" (NLP only), "llm" (Ollama model, retrieval-grounded) or "auto"
     (LLM if a key is configured, otherwise classic). `use_filter=False` skips the
     quality filter (used for the ablation study). `api_key` overrides the
-    ANTHROPIC_API_KEY environment variable for this call only.
+    OLLAMA_API_KEY environment variable for this call only; `model` picks the Ollama model.
     """
     t0 = time.time()
     types = [t for t in (types or list(QUESTION_TYPES)) if t in QUESTION_TYPES]
@@ -72,7 +73,8 @@ def generate(
     if engine == "auto":
         engine = "llm" if llm.llm_available(api_key) else "classic"
     if engine == "llm" and not llm.llm_available(api_key):
-        warnings.append("No Anthropic API key found; fell back to the classic NLP engine.")
+        warnings.append("No Ollama API key (OLLAMA_API_KEY) or local OLLAMA_HOST found; "
+                        "fell back to the classic NLP engine.")
         engine = "classic"
 
     questions: List[Question] = []
@@ -83,16 +85,20 @@ def generate(
         selected = _select_chunks(chunks, keyphrases, n_chunks)
         per_q = -(-n_questions // len(selected)) + 1  # over-generate a little for the filter
         per_c = -(-n_flashcards // len(selected)) + 1
-        for ch in selected:
-            try:
-                q, c = llm.generate_from_chunk(ch, per_q, per_c, types, api_key=api_key)
-            except Exception as e:  # network / auth / parse errors: degrade gracefully
-                warnings.append(f"LLM call failed ({type(e).__name__}: {e}); using the classic engine.")
-                engine = "classic"
-                questions, cards = [], []
-                break
-            questions += q
-            cards += c
+        try:
+            client = llm.make_client(api_key)
+            for ch in selected:
+                q, c = llm.generate_from_chunk(ch, per_q, per_c, types, api_key=api_key, model=model, client=client)
+                questions += q
+                cards += c
+        except Exception as e:  # network / auth / model / parse errors: degrade gracefully
+            warnings.append(f"LLM call failed ({type(e).__name__}: {e}); using the classic engine.")
+            engine = "classic"
+            questions, cards = [], []
+        if engine == "llm" and not questions:
+            warnings.append("The LLM returned no usable questions; using the classic engine.")
+            engine = "classic"
+            cards = []
 
     if engine == "classic":
         gen = ClassicGenerator(sentences, keyphrases, seed=seed)

@@ -1,6 +1,7 @@
 """Streamlit front-end:  streamlit run app.py"""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -9,7 +10,7 @@ import streamlit as st
 from quizgen import export
 from quizgen.evaluate import human_eval_sheet, intrinsic_metrics
 from quizgen.grading import check_answer
-from quizgen.llm import llm_available
+from quizgen.llm import SUGGESTED_MODELS, default_model, llm_available
 from quizgen.models import QUESTION_TYPES
 from quizgen.pipeline import generate
 from quizgen.srs import due_cards, review
@@ -35,11 +36,16 @@ with st.sidebar:
     types = st.multiselect("Question types", list(QUESTION_TYPES), default=list(QUESTION_TYPES),
                            format_func=TYPE_LABELS.get)
     engine = st.radio("Generation engine", ["auto", "classic", "llm"], horizontal=True,
-                      help="classic = NLP pipeline only; llm = Claude, grounded on retrieved passages; "
-                           "auto = llm when an API key is available.")
-    key = st.text_input("Anthropic API key (optional)", type="password",
-                        help="Used only for this browser session; never written to the server environment.") or None
-    st.caption("LLM available ✅" if llm_available(key) else "LLM not configured — classic engine will be used.")
+                      help="classic = NLP pipeline only; llm = Ollama model, grounded on retrieved passages; "
+                           "auto = llm when Ollama is configured.")
+    key = st.text_input("Ollama API key (optional)", type="password",
+                        help="Free key from ollama.com/settings/keys. Used only for this browser session; "
+                             "never written to the server environment.") or None
+    local_only = os.environ.get("OLLAMA_HOST") and not (key or os.environ.get("OLLAMA_API_KEY"))
+    choices = ([default_model()] if local_only or os.environ.get("QUIZGEN_MODEL") else []) + SUGGESTED_MODELS
+    model = st.selectbox("Ollama model", list(dict.fromkeys(choices)), accept_new_options=True,
+                         help="Cloud models via the Ollama API, e.g. gpt-oss:120b. Type any other model name.")
+    st.caption("LLM available ✅" if llm_available(key) else "Ollama not configured — classic engine will be used.")
     go = st.button("Generate", type="primary", width="stretch")
 
 
@@ -60,7 +66,8 @@ if go:
         with st.spinner("Reading the PDF and generating questions..."):
             try:
                 st.session_state.result = generate(source, n_questions=n_q, n_flashcards=n_c, types=types,
-                                                   engine=engine, page_range=_range(pages), api_key=key)
+                                                   engine=engine, page_range=_range(pages), api_key=key,
+                                                   model=model)
                 st.session_state.title = (upload.name.rsplit(".", 1)[0] if upload is not None and not use_sample
                                           else "Photosynthesis and Plant Nutrition")
                 st.session_state.submitted = False

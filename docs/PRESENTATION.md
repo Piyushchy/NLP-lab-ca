@@ -10,7 +10,7 @@ Rubric weights are in brackets. Speaker notes are in italics.
 6. **Key-concept extraction.** POS tagging, then a regexp NP chunker with tagger-error fixes from WordNet sense frequencies, then TF-IDF and TextRank fusion. *Show the Key concepts tab.*
 7. **Question generation.** Cloze, MCQ, true/false (concept swap or negation), definition patterns, flashcards. Bloom level and difficulty tags.
 8. **Distractors.** TF-IDF context similarity between document concepts, plus WordNet co-hyponyms, plus shape and plural-agreement constraints. *Example: "leaf" → root, blue light, nectary.*
-9. **LLM + RAG engine** [4]. Retrieval of key passages, Claude with JSON-schema output, mandatory source quote, grounding check that drops hallucinations.
+9. **LLM + RAG engine** [4]. Retrieval of key passages, an open LLM on Ollama Cloud (gpt-oss:120b, free tier) with JSON-schema output, mandatory source quote, validation and a grounding check that drops hallucinations.
 10. **Quality filter.** Rule checks, grounding, round-trip answerability with the retriever, de-duplication.
 11. **Live demo** [3]. See the script below.
 12. **Evaluation** [5]. Results table from REPORT §3.3: concept coverage 81% vs 35%, answers that are key concepts 100% vs 27%, distractors that are key concepts 50% vs 8%. Then the human-rating table.
@@ -27,7 +27,7 @@ Rubric weights are in brackets. Speaker notes are in italics.
 6. **Export tab:** download the PDF worksheet and the Anki deck.
 7. **Evaluation tab:** grounded, answerable and valid-MCQ rates.
 8. Upload a chapter from your own textbook (keep one ready) to show it generalizes.
-9. If an API key is available, switch the engine to **llm** and regenerate to show the varied, higher-Bloom questions.
+9. Paste your Ollama API key, switch the engine to **llm** and regenerate to show the varied, higher-Bloom questions. Test this the day before; cloud calls need internet and the free tier has usage limits.
 
 ## Suggested work split (group of 3)
 

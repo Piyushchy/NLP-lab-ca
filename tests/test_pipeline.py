@@ -85,8 +85,8 @@ def test_type_filter():
 
 
 def test_llm_engine_falls_back_without_key(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
+    monkeypatch.delenv("OLLAMA_HOST", raising=False)
     r = generate(str(SAMPLE), n_questions=3, n_flashcards=3, engine="llm")
     assert r.engine == "classic" and r.warnings
 
@@ -143,43 +143,81 @@ def test_keyphrases_empty_input():
     assert extract_keyphrases([]) == []
 
 
-def test_llm_path_parses_and_drops_ungrounded_items(monkeypatch):
-    """The LLM engine with a fake Anthropic client: grounded items are kept, invented ones dropped."""
-    import json
-    import types as pytypes
+class FakeOllamaClient:
+    """Stands in for ollama.Client; records how it was constructed and called."""
+    reply = ""
+    instances = []
 
-    import anthropic
+    def __init__(self, host=None, headers=None, **kwargs):
+        self.host, self.headers, self.calls = host, headers or {}, []
+        FakeOllamaClient.instances.append(self)
+
+    def chat(self, model, messages, format=None, options=None, **kwargs):
+        import types as pytypes
+
+        self.calls.append({"model": model, "format": format, "messages": messages})
+        return pytypes.SimpleNamespace(message=pytypes.SimpleNamespace(content=FakeOllamaClient.reply))
+
+
+@pytest.fixture
+def fake_ollama(monkeypatch):
+    import ollama
+
+    for var in ("OLLAMA_API_KEY", "OLLAMA_HOST", "QUIZGEN_MODEL"):
+        monkeypatch.delenv(var, raising=False)
+    FakeOllamaClient.instances = []
+    monkeypatch.setattr(ollama, "Client", FakeOllamaClient)
+    return FakeOllamaClient
+
+
+def test_llm_path_parses_and_drops_ungrounded_items(fake_ollama, monkeypatch):
+    """Ollama Cloud engine with a fake client: grounded items are kept, invented / malformed ones dropped."""
+    import json
 
     payload = {
         "questions": [
             {"qtype": "mcq", "question": "Which enzyme catalyses carbon fixation?", "options": ["Rubisco", "Amylase", "Lipase", "Catalase"],
-             "answer": "Rubisco", "explanation": "Stated in 5.4.", "source_quote": "Rubisco is the enzyme that catalyses carbon fixation.",
+             "answer": "rubisco", "explanation": "Stated in 5.4.", "source_quote": "Rubisco is the enzyme that catalyses carbon fixation.",
              "difficulty": "easy", "bloom": "remember"},
             {"qtype": "true_false", "question": "True or False: Photosynthesis happens in mitochondria.", "options": ["True", "False"],
              "answer": "False", "explanation": "Invented.", "source_quote": "Mitochondria are the powerhouse where photosynthesis occurs.",
+             "difficulty": "easy", "bloom": "remember"},
+            {"qtype": "mcq", "question": "Where is chlorophyll found?", "options": ["Stroma", "Nucleus"],
+             "answer": "Chloroplast", "explanation": "", "source_quote": "Chlorophyll is a green pigment that absorbs light energy.",
              "difficulty": "easy", "bloom": "remember"},
         ],
         "flashcards": [{"front": "Photolysis", "back": "Splitting of water by light energy",
                         "source_quote": "Photolysis is the splitting of water molecules by light energy."}],
     }
-
-    class FakeMessages:
-        def create(self, **kwargs):
-            assert kwargs["output_config"]["format"]["type"] == "json_schema"
-            return pytypes.SimpleNamespace(stop_reason="end_turn",
-                                           content=[pytypes.SimpleNamespace(type="text", text=json.dumps(payload))])
-
-    class FakeClient:
-        def __init__(self, *a, **k):
-            self.beta = pytypes.SimpleNamespace(messages=FakeMessages())
-
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-    monkeypatch.setattr(anthropic, "Anthropic", FakeClient)
+    fake_ollama.reply = "```json\n" + json.dumps(payload) + "\n```"  # fenced reply must still parse
+    monkeypatch.setenv("OLLAMA_API_KEY", "test-key")
     r = generate(str(SAMPLE), n_questions=3, n_flashcards=3, engine="llm")
-    assert r.engine == "llm"
-    assert [q.answer for q in r.questions] == ["Rubisco"]  # the mitochondria item is not grounded
+    assert r.engine == "llm", r.warnings
+    assert [q.answer for q in r.questions] == ["Rubisco"]  # ungrounded T/F and broken MCQ are dropped
     assert r.questions[0].page == 2
     assert r.flashcards and r.flashcards[0].front == "Photolysis"
+    client = fake_ollama.instances[0]
+    assert client.host == "https://ollama.com" and client.headers["Authorization"] == "Bearer test-key"
+    assert client.calls[0]["model"] == "gpt-oss:120b"
+    assert client.calls[0]["format"]["required"] == ["questions", "flashcards"]
+
+
+def test_llm_local_host_and_model_override(fake_ollama, monkeypatch):
+    fake_ollama.reply = '{"questions": [], "flashcards": []}'
+    monkeypatch.setenv("OLLAMA_HOST", "http://localhost:11434")
+    r = generate(str(SAMPLE), n_questions=3, n_flashcards=3, engine="llm", model="llama3.2")
+    client = fake_ollama.instances[0]
+    assert client.host == "http://localhost:11434" and "Authorization" not in client.headers
+    assert client.calls[0]["model"] == "llama3.2"
+    # nothing usable came back, so the app falls back to the classic engine
+    assert r.engine == "classic" and r.questions and any("no usable" in w for w in r.warnings)
+
+
+def test_llm_garbage_reply_falls_back(fake_ollama, monkeypatch):
+    fake_ollama.reply = "Sorry, I cannot help with that."
+    monkeypatch.setenv("OLLAMA_API_KEY", "test-key")
+    r = generate(str(SAMPLE), n_questions=3, n_flashcards=3, engine="llm")
+    assert r.engine == "classic" and r.questions and any("LLM call failed" in w for w in r.warnings)
 
 
 def test_baseline_and_concept_metrics(result):
@@ -198,7 +236,8 @@ def test_cli_generate_and_evaluate(tmp_path, monkeypatch):
 
     from quizgen.__main__ import main
 
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
+    monkeypatch.delenv("OLLAMA_HOST", raising=False)
     assert main(["generate", str(SAMPLE), "-n", "5", "-f", "4", "--engine", "classic", "--out", str(tmp_path)]) == 0
     for name in ("quiz.json", "quiz.md", "quiz.pdf", "questions.csv", "flashcards.csv", "flashcards.apkg"):
         assert (tmp_path / name).stat().st_size > 0
@@ -207,3 +246,53 @@ def test_cli_generate_and_evaluate(tmp_path, monkeypatch):
                  "-n", "6", "--out", str(out)]) == 0
     rows = json.loads(out.read_text())
     assert [r["system"] for r in rows][0] == "naive cloze baseline"
+
+
+def test_real_ollama_client_against_local_fake_server(monkeypatch):
+    """Exercise the real `ollama` HTTP client end to end against a local stand-in for ollama.com."""
+    import json
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    from quizgen import llm
+
+    seen = {}
+    content = json.dumps({
+        "questions": [{"qtype": "fill_blank", "question": "_____ is the enzyme that catalyses carbon fixation.",
+                       "options": [], "answer": "Rubisco", "explanation": "Section 5.4",
+                       "source_quote": "Rubisco is the enzyme that catalyses carbon fixation.",
+                       "difficulty": "easy", "bloom": "remember"}],
+        "flashcards": [],
+    })
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            seen.update(path=self.path, auth=self.headers.get("Authorization"), body=body)
+            reply = json.dumps({"model": body["model"], "created_at": "2026-10-01T00:00:00Z",
+                                "message": {"role": "assistant", "content": content},
+                                "done": True, "done_reason": "stop"}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(reply)))
+            self.end_headers()
+            self.wfile.write(reply)
+
+        def log_message(self, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        monkeypatch.setattr(llm, "CLOUD_HOST", f"http://127.0.0.1:{server.server_port}")
+        for var in ("OLLAMA_HOST", "QUIZGEN_MODEL"):
+            monkeypatch.delenv(var, raising=False)
+        r = generate(str(SAMPLE), n_questions=2, n_flashcards=2, types=["fill_blank"], engine="llm",
+                     api_key="sk-test", model="gpt-oss:20b")
+    finally:
+        server.shutdown()
+    assert seen["path"] == "/api/chat" and seen["auth"] == "Bearer sk-test"
+    assert seen["body"]["model"] == "gpt-oss:20b" and seen["body"]["stream"] is False
+    assert seen["body"]["format"]["required"] == ["questions", "flashcards"]
+    assert r.engine == "llm", r.warnings
+    assert [q.answer for q in r.questions] == ["Rubisco"]

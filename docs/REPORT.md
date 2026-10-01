@@ -83,8 +83,9 @@ Options must match the answer's "shape": a similar number of words, the same cap
 ### 2.5 Question generation, LLM engine (`llm.py`)
 
 - The retriever selects the passages that cover the most important concepts.
-- Each passage is sent to Claude (`claude-opus-5-5`, low effort) with a system prompt that tells it to use only facts in the passage and to copy the supporting sentence into `source_quote`.
-- The output is constrained to a JSON schema (`output_config.format`), so there is no fragile text parsing. Server-side refusal fallback is enabled.
+- Each passage is sent to an open-weight LLM on **Ollama Cloud** (default `gpt-oss:120b`; any Ollama model can be chosen) through the Ollama API (`https://ollama.com`, Bearer API key, free tier). A local Ollama install also works. The system prompt tells the model to use only facts in the passage and to copy the supporting sentence into `source_quote`. Temperature is 0.3.
+- The output is constrained with a JSON schema (Ollama's `format` parameter). Open models do not always follow a schema, so the reply is validated again: code fences are stripped, MCQs must have four distinct options containing the answer, true/false answers must be True or False, and unknown types are dropped.
+- If the API is unreachable, the reply cannot be parsed, or no valid question comes back, the app falls back to the classic engine and shows a warning.
 - Items whose quote cannot be found in the PDF text are discarded as hallucinations. The test suite checks this with a fake model response that includes an invented fact.
 
 ### 2.6 Quality filter (`quality.py`)
@@ -108,19 +109,19 @@ Options must match the answer's "shape": a similar number of words, the same cap
 
 ### 2.8 Tools and technologies
 
-Python 3.11, PyMuPDF/pypdf, NLTK (Punkt, averaged perceptron tagger, RegexpParser, WordNet, stop words), scikit-learn (TF-IDF, cosine similarity), NetworkX (PageRank), Anthropic Python SDK (optional), Streamlit, ReportLab, genanki, pytest.
+Python 3.11, PyMuPDF/pypdf, NLTK (Punkt, averaged perceptron tagger, RegexpParser, WordNet, stop words), scikit-learn (TF-IDF, cosine similarity), NetworkX (PageRank), Ollama Python client with Ollama Cloud models (optional), Streamlit, ReportLab, genanki, pytest.
 
 ## 3. Testing and performance evaluation
 
 ### 3.1 Test suite
 
-`python -m pytest` runs 21 tests. They cover:
+`python -m pytest` runs 24 tests. They cover:
 
 - Cleaning, heading and hyphenation handling, and sentence filtering.
 - Definition patterns and word-boundary-safe cloze replacement.
 - Keyphrase ranking.
 - Requested question counts and types; MCQ well-formedness; grounding; no duplicate source sentences.
-- The type filter; LLM fallback without a key; the LLM path with a mocked model, including dropping a hallucinated item.
+- The type filter; LLM fallback without a key; the Ollama path with a mocked client: cloud host and API-key header, dropping a hallucinated item and a malformed MCQ, parsing a fenced reply, a local host with a custom model, falling back on an unusable reply, and the real `ollama` HTTP client against a local stand-in server (request path, Bearer header, model and schema).
 - Answer checking, the SM-2 schedule, the metric implementations, all export formats, and the CLI end to end.
 
 The Streamlit app was also driven in a headless Chromium browser: generate → answer → submit → flashcard review → export download → evaluation tab, with no exceptions. The screenshots in `docs/screenshots/` come from that run.
@@ -135,7 +136,7 @@ The Streamlit app was also driven in a headless Chromium browser: generate → a
   - **Naive cloze baseline** (`baseline.py`): a random sentence with a random noun blanked, and random nouns from the document as distractors.
   - **Classic NLP without the quality filter.**
   - **Classic NLP, full pipeline.**
-  - **LLM + RAG:** added automatically when an API key is available.
+  - **LLM + RAG (Ollama):** added automatically when `OLLAMA_API_KEY` or `OLLAMA_HOST` is set.
 
 **Metrics**
 
@@ -163,7 +164,7 @@ Question mix (full pipeline): 4 MCQ, 4 true/false, 4 fill-in-the-blank and 3 sho
 - **Concept selection works.** Every answer is a key concept, against 27% for the random baseline. The quiz covers 81% of the concepts a teacher chose, against 35%.
 - **Distractors are on-topic.** Half of the distractors are themselves key concepts of the chapter, against 8% for random nouns. That makes MCQs answerable only by someone who knows the material, not by spotting the odd one out. The rest come from WordNet sister terms and less central document concepts.
 - **ROUGE-L and BLEU are low in absolute terms for every system.** The references are written as wh-questions ("Which enzyme catalyses carbon fixation?"), while the classic engine writes cloze statements. The scores are still useful for comparing systems, not as an absolute measure of quality.
-- **Ablation: quality filter.** The classic generator enforces most constraints while it builds each item (one question per source sentence, shape-matched distractors, answers that are always in the source). As a result the filter rejected **none** of the 47 candidates the classic engine can produce from this chapter. On the water-cycle PDF it also rejected none. The "no filter" and "full" rows are therefore identical. The filter is a safety net for the LLM engine, where hallucinated, malformed and duplicate items do happen: the mocked-LLM test shows an invented "photosynthesis in mitochondria" item being removed. Measuring its rejection rate on real LLM output needs an API key and is left as a to-do for the demo.
+- **Ablation: quality filter.** The classic generator enforces most constraints while it builds each item (one question per source sentence, shape-matched distractors, answers that are always in the source). As a result the filter rejected **none** of the 47 candidates the classic engine can produce from this chapter. On the water-cycle PDF it also rejected none. The "no filter" and "full" rows are therefore identical. The filter is a safety net for the LLM engine, where hallucinated, malformed and duplicate items do happen: the mocked-LLM test shows an invented "photosynthesis in mitochondria" item being removed. Measuring its rejection rate on real LLM output needs an Ollama API key: run `python -m quizgen evaluate` with `OLLAMA_API_KEY` set and add the row to the table.
 - **Speed:** about 0.1–0.2 s per chapter once warm, about 3–5 s for the first call while NLTK loads, on a CPU. No GPU is needed.
 
 ### 3.5 Human evaluation protocol

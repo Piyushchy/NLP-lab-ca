@@ -13,7 +13,7 @@ from pathlib import Path
 from . import export
 from .baseline import naive_questions
 from .evaluate import concept_metrics, human_eval_sheet, intrinsic_metrics, reference_metrics
-from .llm import llm_available
+from .llm import default_model, llm_available
 from .models import QUESTION_TYPES
 from .pipeline import generate
 
@@ -28,7 +28,7 @@ def _page_range(text: str | None):
 def cmd_generate(args) -> int:
     result = generate(args.pdf, n_questions=args.n, n_flashcards=args.flashcards,
                       types=args.types.split(","), engine=args.engine,
-                      page_range=_page_range(args.pages), seed=args.seed)
+                      page_range=_page_range(args.pages), seed=args.seed, model=args.model)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     title = Path(args.pdf).stem.replace("_", " ").title()
@@ -69,11 +69,14 @@ def cmd_evaluate(args) -> int:
     rows.append(row("classic NLP, no quality filter", nofilter.questions, nofilter.flashcards, nofilter))
     rows.append(row("classic NLP (full pipeline)", full.questions, full.flashcards, full))
     if llm_available():
-        llm = generate(args.pdf, n_questions=args.n, n_flashcards=args.n, engine="llm", seed=args.seed)
+        model = args.model or default_model()
+        llm = generate(args.pdf, n_questions=args.n, n_flashcards=args.n, engine="llm", seed=args.seed, model=model)
         if llm.engine == "llm":
-            rows.append(row("LLM + RAG (Claude)", llm.questions, llm.flashcards, llm))
+            rows.append(row(f"LLM + RAG (Ollama {model})", llm.questions, llm.flashcards, llm))
+        for w in llm.warnings:
+            print("warning:", w, file=sys.stderr)
     else:
-        print("note: no ANTHROPIC_API_KEY set, so the LLM engine was not evaluated", file=sys.stderr)
+        print("note: no OLLAMA_API_KEY / OLLAMA_HOST set, so the LLM engine was not evaluated", file=sys.stderr)
     text = json.dumps(rows, indent=2)
     print(text)
     if args.out:
@@ -93,6 +96,7 @@ def main(argv=None) -> int:
     g.add_argument("--types", default=",".join(QUESTION_TYPES), help="comma-separated question types")
     g.add_argument("--engine", choices=["auto", "classic", "llm"], default="auto")
     g.add_argument("--pages", help="page range, e.g. 3-7")
+    g.add_argument("--model", help="Ollama model for --engine llm (default: gpt-oss:120b on Ollama Cloud)")
     g.add_argument("--seed", type=int, default=13)
     g.add_argument("--out", default="outputs")
     g.set_defaults(func=cmd_generate)
@@ -101,6 +105,7 @@ def main(argv=None) -> int:
     e.add_argument("pdf")
     e.add_argument("--refs", help="reference questions JSON")
     e.add_argument("-n", type=int, default=15)
+    e.add_argument("--model", help="Ollama model to evaluate when an Ollama key / host is set")
     e.add_argument("--seed", type=int, default=13)
     e.add_argument("--out", help="write results JSON here")
     e.set_defaults(func=cmd_evaluate)
