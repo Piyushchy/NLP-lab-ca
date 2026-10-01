@@ -13,7 +13,7 @@ Rubric weights are in brackets. Speaker notes are in italics.
 9. **LLM + RAG engine** [4]. Retrieval of key passages, an open LLM on Ollama Cloud (gpt-oss:120b, free tier) with JSON-schema output, mandatory source quote, validation and a grounding check that drops hallucinations.
 10. **Quality filter.** Rule checks, grounding, round-trip answerability with the retriever, de-duplication.
 11. **Live demo** [3]. See the script below.
-12. **Evaluation** [5]. Results table from REPORT §3.3: concept coverage 81% vs 35%, answers that are key concepts 100% vs 27%, distractors that are key concepts 50% vs 8%. Then the human-rating table.
+12. **Evaluation** [5]. Results table from REPORT §3.3: mean of 5 runs: concept coverage 79% vs 47%, answers that are key concepts 84% vs 15%, distractors that are key concepts 72% vs 8%. Be ready to explain why BLEU-4 favours the baseline. Then the human-rating table.
 13. **Limitations and future work.** OCR, Bloom levels above "understand" need the LLM, POS-tagger errors, English only. Next: T5 question generation, DeBERTa QA, embeddings, multilingual, adaptive quizzes.
 14. **Conclusion and Q&A.**
 

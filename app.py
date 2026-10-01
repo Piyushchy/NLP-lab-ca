@@ -1,6 +1,7 @@
 """Streamlit front-end:  streamlit run app.py"""
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 
@@ -47,6 +48,10 @@ with st.sidebar:
                          help="Cloud models via the Ollama API, e.g. gpt-oss:120b. Type any other model name.")
     st.caption("LLM available ✅" if llm_available(key) else "Ollama not configured — classic engine will be used.")
     go = st.button("Generate", type="primary", width="stretch")
+    st.caption("Each Generate avoids questions already asked from the same PDF.")
+    if st.button("Forget previous questions", width="stretch"):
+        st.session_state.history = {}
+        st.toast("Question history cleared.")
 
 
 def _range(text: str):
@@ -63,11 +68,19 @@ if go:
     elif not types:
         st.error("Select at least one question type.")
     else:
+        # Remember what each PDF has already been asked, so every Generate gives new questions.
+        doc_id = hashlib.sha1(source).hexdigest()
+        history = st.session_state.setdefault("history", {}).setdefault(doc_id, {"sources": set(), "questions": []})
         with st.spinner("Reading the PDF and generating questions..."):
             try:
-                st.session_state.result = generate(source, n_questions=n_q, n_flashcards=n_c, types=types,
-                                                   engine=engine, page_range=_range(pages), api_key=key,
-                                                   model=model)
+                result = generate(source, n_questions=n_q, n_flashcards=n_c, types=types,
+                                  engine=engine, page_range=_range(pages), api_key=key, model=model,
+                                  avoid=history["sources"], avoid_questions=history["questions"][-15:])
+                history["sources"] |= {q.source_sentence for q in result.questions}
+                history["sources"] |= {c.source_sentence for c in result.flashcards}
+                history["questions"] += [q.question for q in result.questions]
+                st.session_state.result = result
+                st.session_state.quiz_no = st.session_state.get("quiz_no", 0) + 1
                 st.session_state.title = (upload.name.rsplit(".", 1)[0] if upload is not None and not use_sample
                                           else "Photosynthesis and Plant Nutrition")
                 st.session_state.submitted = False
@@ -95,6 +108,7 @@ tab_quiz, tab_cards, tab_concepts, tab_export, tab_eval = st.tabs(
 
 # ---------------- quiz ----------------
 with tab_quiz:
+    quiz_no = st.session_state.get("quiz_no", 0)
     with st.form("quiz"):
         responses = {}
         for i, q in enumerate(result.questions):
@@ -102,9 +116,9 @@ with tab_quiz:
                         f"<small>{TYPE_LABELS[q.qtype]} · {q.difficulty} · Bloom: {q.bloom} · p. {q.page}</small>",
                         unsafe_allow_html=True)
             if q.qtype in ("mcq", "true_false"):
-                responses[i] = st.radio("Answer", q.options, index=None, key=f"q{i}", label_visibility="collapsed")
+                responses[i] = st.radio("Answer", q.options, index=None, key=f"q{quiz_no}-{i}", label_visibility="collapsed")
             else:
-                responses[i] = st.text_input("Answer", key=f"q{i}", label_visibility="collapsed")
+                responses[i] = st.text_input("Answer", key=f"q{quiz_no}-{i}", label_visibility="collapsed")
         if st.form_submit_button("Submit answers"):
             st.session_state.submitted = True
             st.session_state.responses = responses

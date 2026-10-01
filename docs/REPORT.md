@@ -80,12 +80,20 @@ Options must match the answer's "shape": a similar number of words, the same cap
 
 **Difficulty** comes from the concept's rank (central concepts are easier) and the sentence length.
 
+**Variety.** Concepts are visited in a weighted random order (Efraimidis–Spirakis sampling with weight = score², so important concepts still come first more often), sentence choice gets a small random jitter, and the first question type and distractor picks are randomised. The app records which source sentences each PDF has already been quizzed on and penalises them, so repeated Generate presses move through the chapter. A concept whose only sentences were already used is skipped in a first pass and reused only if the quiz would otherwise be short. On the 3-page sample chapter (54 sentences, 10 questions per quiz) the first three quizzes share no sentences; the fourth reuses one and the fifth seven, as the chapter runs out of fresh material. A fixed seed reproduces a quiz exactly (used for the evaluation).
+
 ### 2.5 Question generation, LLM engine (`llm.py`)
 
 - The retriever selects the passages that cover the most important concepts.
 - Each passage is sent to an open-weight LLM on **Ollama Cloud** (default `gpt-oss:120b`; any Ollama model can be chosen) through the Ollama API (`https://ollama.com`, Bearer API key, free tier). A local Ollama install also works. The system prompt tells the model to use only facts in the passage and to copy the supporting sentence into `source_quote`. Temperature is 0.3.
-- The output is constrained with a JSON schema (Ollama's `format` parameter). Open models do not always follow a schema, so the reply is validated again: code fences are stripped, MCQs must have four distinct options containing the answer, true/false answers must be True or False, and unknown types are dropped.
-- If the API is unreachable, the reply cannot be parsed, or no valid question comes back, the app falls back to the classic engine and shows a warning.
+- The output is constrained with a JSON schema (Ollama's `format` parameter), and the prompt includes a worked JSON example. Open models still deviate, so the reply is normalised before validation:
+  - code fences and surrounding prose are stripped, and the question list is found wherever it is nested;
+  - field-name variants are accepted ("type", "choices", "correct_answer", "statement", "evidence", …), and type names are mapped ("Multiple Choice" → mcq, "True/False" → true_false);
+  - letter answers ("B", "B) ATP") and options given as a dict or with "A)" prefixes are resolved to the option text; boolean answers become True/False;
+  - an item without a usable quote is grounded on the passage sentence that contains its answer, searching the whole document if needed, so its page number is correct.
+- MCQs must still have 3–6 distinct options containing the answer, and true/false answers must be True or False.
+- Generation is varied: passages are sampled with probability weighted by concept importance, temperature is 0.7, and the prompt lists recent questions not to repeat.
+- If the API is unreachable, the reply cannot be parsed, or no valid question comes back, the app falls back to the classic engine and shows a warning with the start of the reply. If only some LLM items pass the quality filter, the quiz is topped up with classic questions.
 - Items whose quote cannot be found in the PDF text are discarded as hallucinations. The test suite checks this with a fake model response that includes an invented fact.
 
 ### 2.6 Quality filter (`quality.py`)
@@ -115,13 +123,14 @@ Python 3.11, PyMuPDF/pypdf, NLTK (Punkt, averaged perceptron tagger, RegexpParse
 
 ### 3.1 Test suite
 
-`python -m pytest` runs 24 tests. They cover:
+`python -m pytest` runs 26 tests. They cover:
 
 - Cleaning, heading and hyphenation handling, and sentence filtering.
 - Definition patterns and word-boundary-safe cloze replacement.
 - Keyphrase ranking.
 - Requested question counts and types; MCQ well-formedness; grounding; no duplicate source sentences.
 - The type filter; LLM fallback without a key; the Ollama path with a mocked client: cloud host and API-key header, dropping a hallucinated item and a malformed MCQ, parsing a fenced reply, a local host with a custom model, falling back on an unusable reply, and the real `ollama` HTTP client against a local stand-in server (request path, Bearer header, model and schema).
+- A messy, realistic model reply (prose around fenced JSON, nested keys, "Multiple Choice" / "True/False" type names, letter answers, options as a dict or with "A)" prefixes, boolean answers, missing quotes) is fully parsed and grounded; and repeated generations use different sentences while a fixed seed still reproduces a quiz.
 - Answer checking, the SM-2 schedule, the metric implementations, all export formats, and the CLI end to end.
 
 The Streamlit app was also driven in a headless Chromium browser: generate → answer → submit → flashcard review → export download → evaluation tab, with no exceptions. The screenshots in `docs/screenshots/` come from that run.
@@ -132,7 +141,7 @@ The Streamlit app was also driven in a headless Chromium browser: generate → a
 
 - **Data:** `data/sample_textbook.pdf`, an original 3-page chapter on photosynthesis (54 usable sentences).
 - **References:** 26 teacher-style questions with answers (`data/reference_questions.json`).
-- **Systems compared:** 15 questions each.
+- **Systems compared:** 15 questions each; every system is run with 5 random seeds (13–17) and the metrics are averaged. `docs/evaluation_results.json` also lists the min–max range for each metric.
   - **Naive cloze baseline** (`baseline.py`): a random sentence with a random noun blanked, and random nouns from the document as distractors.
   - **Classic NLP without the quality filter.**
   - **Classic NLP, full pipeline.**
@@ -153,17 +162,19 @@ The Streamlit app was also driven in a headless Chromium browser: generate → a
 
 | System | ROUGE-L | BLEU-4 | Concept coverage | Answer is key concept | Distractor is key concept | Grounded | Answerable | MCQ valid | Diversity |
 |---|---|---|---|---|---|---|---|---|---|
-| Naive cloze baseline | 0.418 | 0.105 | 34.6% | 26.7% | 8.3% | 100% | 100% | 100% | 0.825 |
-| Classic NLP, no filter | 0.516 | 0.129 | 80.8% | 100% | 50.0% | 100% | 100% | 100% | 0.906 |
-| **Classic NLP, full** | **0.516** | **0.129** | **80.8%** | **100%** | **50.0%** | 100% | 100% | 100% | **0.906** |
+| Naive cloze baseline | 0.457 | **0.173** | 46.9% | 14.7% | 7.5% | 100% | 100% | 100% | 0.827 |
+| Classic NLP, no filter | 0.533 | 0.113 | 79.2% | 83.9% | 71.7% | 100% | 100% | 100% | 0.887 |
+| **Classic NLP, full** | **0.533** | 0.113 | **79.2%** | **83.9%** | **71.7%** | 100% | 100% | 100% | **0.887** |
 
-Question mix (full pipeline): 4 MCQ, 4 true/false, 4 fill-in-the-blank and 3 short answer. Difficulty: 6 easy, 9 medium. Bloom levels: 7 remember, 8 understand.
+Ranges over the 5 runs (full pipeline vs baseline): concept coverage 77–81% vs 35–58%, answer is key concept 71–100% vs 0–27%, distractor is key concept 56–83% vs 4–13%, BLEU-4 0.08–0.15 vs 0.10–0.24.
+
+Question mix (full pipeline, first run): 3 MCQ, 4 true/false, 4 fill-in-the-blank and 4 short answer. Difficulty: 3 easy, 5 medium, 7 hard. Bloom levels: 8 remember, 7 understand.
 
 ### 3.4 Analysis
 
-- **Concept selection works.** Every answer is a key concept, against 27% for the random baseline. The quiz covers 81% of the concepts a teacher chose, against 35%.
-- **Distractors are on-topic.** Half of the distractors are themselves key concepts of the chapter, against 8% for random nouns. That makes MCQs answerable only by someone who knows the material, not by spotting the odd one out. The rest come from WordNet sister terms and less central document concepts.
-- **ROUGE-L and BLEU are low in absolute terms for every system.** The references are written as wh-questions ("Which enzyme catalyses carbon fixation?"), while the classic engine writes cloze statements. The scores are still useful for comparing systems, not as an absolute measure of quality.
+- **Concept selection works.** 84% of answers are top-30 key concepts, against 15% for the random baseline, and the quiz covers 79% of the concepts a teacher chose, against 47%. The figure is below 100% by design: concepts are sampled in a weighted random order so that repeated quizzes differ, which sometimes picks a lower-ranked concept.
+- **Distractors are on-topic.** 72% of distractors are themselves key concepts of the chapter, against 8% for random nouns. That makes MCQs answerable only by someone who knows the material, not by spotting the odd one out. The rest come from WordNet sister terms and less central document concepts.
+- **ROUGE-L and BLEU are low in absolute terms for every system.** The references are written as wh-questions ("Which enzyme catalyses carbon fixation?"), while the classic engine writes cloze statements. ROUGE-L favours the full pipeline (0.53 vs 0.46), but BLEU-4 favours the baseline (0.17 vs 0.11). BLEU-4 needs exact 4-word overlaps, and the baseline keeps whole sentences with only one word blanked, whereas our true/false and "What is meant by…" templates add or change words. BLEU-4 also varies widely between runs (0.10–0.24 for the baseline), so it says little about question quality here; the concept-based metrics are more informative.
 - **Ablation: quality filter.** The classic generator enforces most constraints while it builds each item (one question per source sentence, shape-matched distractors, answers that are always in the source). As a result the filter rejected **none** of the 47 candidates the classic engine can produce from this chapter. On the water-cycle PDF it also rejected none. The "no filter" and "full" rows are therefore identical. The filter is a safety net for the LLM engine, where hallucinated, malformed and duplicate items do happen: the mocked-LLM test shows an invented "photosynthesis in mitochondria" item being removed. Measuring its rejection rate on real LLM output needs an Ollama API key: run `python -m quizgen evaluate` with `OLLAMA_API_KEY` set and add the row to the table.
 - **Speed:** about 0.1–0.2 s per chapter once warm, about 3–5 s for the first call while NLTK loads, on a CPU. No GPU is needed.
 

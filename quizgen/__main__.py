@@ -60,22 +60,41 @@ def cmd_evaluate(args) -> int:
         out.update({k: v for k, v in m.items() if k != "n_questions"})
         return out
 
-    rows = []
-    full = generate(args.pdf, n_questions=args.n, n_flashcards=args.n, engine="classic", seed=args.seed)
-    base = naive_questions(full.sentences, args.n, seed=args.seed)
-    rows.append(row("naive cloze baseline", base, [], full))
-    nofilter = generate(args.pdf, n_questions=args.n, n_flashcards=args.n, engine="classic", seed=args.seed,
-                        use_filter=False)
-    rows.append(row("classic NLP, no quality filter", nofilter.questions, nofilter.flashcards, nofilter))
-    rows.append(row("classic NLP (full pipeline)", full.questions, full.flashcards, full))
-    if llm_available():
-        model = args.model or default_model()
-        llm = generate(args.pdf, n_questions=args.n, n_flashcards=args.n, engine="llm", seed=args.seed, model=model)
-        if llm.engine == "llm":
-            rows.append(row(f"LLM + RAG (Ollama {model})", llm.questions, llm.flashcards, llm))
-        for w in llm.warnings:
-            print("warning:", w, file=sys.stderr)
-    else:
+    def average(runs: list) -> dict:
+        """Mean of each numeric metric over runs with different seeds (+ the spread as min/max)."""
+        out = {"system": runs[0]["system"], "runs": len(runs)}
+        for k, v in runs[0].items():
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                vals = [r[k] for r in runs if isinstance(r.get(k), (int, float))]
+                out[k] = round(sum(vals) / len(vals), 4)
+                if len(runs) > 1 and k not in ("n_questions",):
+                    out[k + "_range"] = [round(min(vals), 4), round(max(vals), 4)]
+            elif k != "system":
+                out[k] = v  # distributions: from the first run
+        return out
+
+    systems = {"naive cloze baseline": [], "classic NLP, no quality filter": [], "classic NLP (full pipeline)": []}
+    llm_runs, model = [], args.model or default_model()
+    for seed in range(args.seed, args.seed + args.runs):
+        full = generate(args.pdf, n_questions=args.n, n_flashcards=args.n, engine="classic", seed=seed)
+        base = naive_questions(full.sentences, args.n, seed=seed)
+        systems["naive cloze baseline"].append(row("naive cloze baseline", base, [], full))
+        nofilter = generate(args.pdf, n_questions=args.n, n_flashcards=args.n, engine="classic", seed=seed,
+                            use_filter=False)
+        systems["classic NLP, no quality filter"].append(
+            row("classic NLP, no quality filter", nofilter.questions, nofilter.flashcards, nofilter))
+        systems["classic NLP (full pipeline)"].append(
+            row("classic NLP (full pipeline)", full.questions, full.flashcards, full))
+        if llm_available():
+            llm = generate(args.pdf, n_questions=args.n, n_flashcards=args.n, engine="llm", seed=seed, model=model)
+            for w in llm.warnings:
+                print("warning:", w, file=sys.stderr)
+            if llm.engine == "llm":
+                llm_runs.append(row(f"LLM + RAG (Ollama {model})", llm.questions, llm.flashcards, llm))
+    rows = [average(r) for r in systems.values()]
+    if llm_runs:
+        rows.append(average(llm_runs))
+    elif not llm_available():
         print("note: no OLLAMA_API_KEY / OLLAMA_HOST set, so the LLM engine was not evaluated", file=sys.stderr)
     text = json.dumps(rows, indent=2)
     print(text)
@@ -97,7 +116,7 @@ def main(argv=None) -> int:
     g.add_argument("--engine", choices=["auto", "classic", "llm"], default="auto")
     g.add_argument("--pages", help="page range, e.g. 3-7")
     g.add_argument("--model", help="Ollama model for --engine llm (default: gpt-oss:120b on Ollama Cloud)")
-    g.add_argument("--seed", type=int, default=13)
+    g.add_argument("--seed", type=int, default=None, help="fix the random choices to reproduce a quiz")
     g.add_argument("--out", default="outputs")
     g.set_defaults(func=cmd_generate)
 
@@ -106,7 +125,8 @@ def main(argv=None) -> int:
     e.add_argument("--refs", help="reference questions JSON")
     e.add_argument("-n", type=int, default=15)
     e.add_argument("--model", help="Ollama model to evaluate when an Ollama key / host is set")
-    e.add_argument("--seed", type=int, default=13)
+    e.add_argument("--seed", type=int, default=13, help="first seed; runs use seed, seed+1, ...")
+    e.add_argument("--runs", type=int, default=5, help="number of seeds to average over")
     e.add_argument("--out", help="write results JSON here")
     e.set_defaults(func=cmd_evaluate)
 

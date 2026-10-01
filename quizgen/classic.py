@@ -56,13 +56,25 @@ def find_definition(sentence: str) -> Optional[Tuple[str, str]]:
 
 
 class ClassicGenerator:
-    def __init__(self, sentences: List[Sentence], keyphrases: List[dict], seed: int = 13):
+    def __init__(self, sentences: List[Sentence], keyphrases: List[dict], seed: Optional[int] = 13,
+                 avoid: Optional[set] = None):
+        """`seed` controls the random choices (None = different every run); `avoid` holds source
+        sentences used in earlier quizzes, which are only reused once fresh ones run out."""
         self.sentences = sentences
         self.by_idx: Dict[int, Sentence] = {s.index: s for s in sentences}
         self.keyphrases = keyphrases
         self.rng = random.Random(seed)
+        self.avoid = avoid or set()
         self.distractors = DistractorGenerator(keyphrases, sentences, seed=seed)
         self._rank = {kp["key"]: i for i, kp in enumerate(keyphrases)}
+
+    def _concept_order(self) -> List[dict]:
+        """Weighted random order (Efraimidis-Spirakis): important concepts tend to come first,
+        but each run asks about a different selection."""
+        def key(kp):
+            weight = max(kp["score"], 1e-6) ** 2
+            return self.rng.random() ** (1.0 / weight)
+        return sorted(self.keyphrases, key=key, reverse=True)
 
     # ---------- helpers ----------
     def _difficulty(self, kp: dict, sentence: str) -> str:
@@ -91,6 +103,9 @@ class ClassicGenerator:
                 score -= 0.15  # blank at the very start reads poorly
             if _ANAPHORA.match(s.text):
                 score -= 0.4  # "These reactions ..." needs the previous sentence for context
+            if s.text in self.avoid:
+                score -= 2.0  # asked in an earlier quiz: only reuse when nothing else is left
+            score += self.rng.uniform(0, 0.3)  # variety between equally good sentences
             if score > best_score:
                 best, best_score = s, score
         return best
@@ -166,39 +181,47 @@ class ClassicGenerator:
         used_sentences: set = set()
         tf_toggle = self.rng.random() < 0.5
         type_cycle = list(types)
-        t_i = 0
+        t_i = self.rng.randrange(len(type_cycle))
 
         # Definition-based short answers come from definition sentences, not keyphrases.
         defs = [s for s in self.sentences if find_definition(s.text)] if "short_answer" in types else []
+        self.rng.shuffle(defs)
+        defs.sort(key=lambda d: d.text in self.avoid)  # fresh definitions first
 
-        for kp in self.keyphrases:
-            if len(out) >= n:
-                break
-            s = self._best_sentence(kp, used_sentences)
-            if s is None:
-                continue
-            for attempt in range(len(type_cycle)):
-                qtype = type_cycle[(t_i + attempt) % len(type_cycle)]
-                q = None
-                if qtype == "fill_blank":
-                    q = self.fill_blank(kp, s)
-                elif qtype == "mcq":
-                    q = self.mcq(kp, s)
-                elif qtype == "true_false":
-                    q = self.true_false(kp, s, make_false=tf_toggle)
-                    if q:
-                        tf_toggle = not tf_toggle
-                elif qtype == "short_answer" and defs:
-                    d = defs.pop(0)
-                    if d.index not in used_sentences:
-                        q = self.short_answer_from_definition(d)
-                        if q:
-                            used_sentences.add(d.index)
-                if q:
-                    out.append(q)
-                    used_sentences.add(s.index)
-                    t_i = (t_i + attempt + 1) % len(type_cycle)
+        order = self._concept_order()
+        # Pass 1 uses only sentences not asked before; pass 2 may reuse them if the quiz is still short.
+        for allow_reuse in (False, True):
+            for kp in order:
+                if len(out) >= n:
                     break
+                s = self._best_sentence(kp, used_sentences)
+                if s is None or (s.text in self.avoid and not allow_reuse):
+                    continue
+                for attempt in range(len(type_cycle)):
+                    qtype = type_cycle[(t_i + attempt) % len(type_cycle)]
+                    q = None
+                    if qtype == "fill_blank":
+                        q = self.fill_blank(kp, s)
+                    elif qtype == "mcq":
+                        q = self.mcq(kp, s)
+                    elif qtype == "true_false":
+                        q = self.true_false(kp, s, make_false=tf_toggle)
+                        if q:
+                            tf_toggle = not tf_toggle
+                    elif qtype == "short_answer" and defs:
+                        d = defs[0]
+                        if d.text in self.avoid and not allow_reuse:
+                            continue
+                        defs.pop(0)
+                        if d.index not in used_sentences:
+                            q = self.short_answer_from_definition(d)
+                            if q:
+                                used_sentences.add(d.index)
+                    if q:
+                        out.append(q)
+                        used_sentences.add(s.index)
+                        t_i = (t_i + attempt + 1) % len(type_cycle)
+                        break
         # Top up with any remaining definitions if we are short.
         while len(out) < n and defs:
             d = defs.pop(0)
@@ -220,9 +243,11 @@ class ClassicGenerator:
                 term, defn = d
                 seen.add(term.lower())
                 cards.append(Flashcard(front=term[0].upper() + term[1:], back=defn[0].upper() + defn[1:], page=s.page, source_sentence=s.text))
+        self.rng.shuffle(cards)
+        cards.sort(key=lambda c: c.source_sentence in self.avoid)  # fresh cards first
         # 2) top concepts -> concept / context-sentence cards
         used = set()
-        for kp in self.keyphrases:
+        for kp in self._concept_order():
             if len(cards) >= n:
                 break
             if kp["phrase"].lower() in seen:

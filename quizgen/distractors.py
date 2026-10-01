@@ -8,7 +8,7 @@ Two sources are combined:
 from __future__ import annotations
 
 import random
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -20,7 +20,7 @@ from .nlp import lemmatize, wordnet_available
 
 
 class DistractorGenerator:
-    def __init__(self, keyphrases: List[dict], sentences: List[Sentence], seed: int = 13):
+    def __init__(self, keyphrases: List[dict], sentences: List[Sentence], seed: Optional[int] = 13):
         self.keyphrases = keyphrases
         self.rng = random.Random(seed)
         by_idx = {s.index: s.text for s in sentences}
@@ -101,7 +101,11 @@ class DistractorGenerator:
         wn_cands = self._from_wordnet(answer)
         picked: List[str] = []
         # Prefer the 2 most context-similar document concepts, then mix in WordNet terms.
-        pools = [doc[:2], wn_cands[:4], doc[2:8]]
+        top = doc[:4]
+        self.rng.shuffle(top)
+        wn_top = wn_cands[:6]
+        self.rng.shuffle(wn_top)
+        pools = [top[:2], wn_top, top[2:] + doc[4:8]]
         for pool in pools:
             for c in pool:
                 if len(picked) >= k:

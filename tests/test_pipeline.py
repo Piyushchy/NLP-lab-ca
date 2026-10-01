@@ -22,7 +22,7 @@ def result():
     if not SAMPLE.exists():
         from scripts.make_sample_pdf import build
         build(SAMPLE)
-    return generate(str(SAMPLE), n_questions=12, n_flashcards=10, engine="classic")
+    return generate(str(SAMPLE), n_questions=12, n_flashcards=10, engine="classic", seed=13)
 
 
 def test_clean_text_removes_headings_and_hyphenation():
@@ -193,8 +193,11 @@ def test_llm_path_parses_and_drops_ungrounded_items(fake_ollama, monkeypatch):
     monkeypatch.setenv("OLLAMA_API_KEY", "test-key")
     r = generate(str(SAMPLE), n_questions=3, n_flashcards=3, engine="llm")
     assert r.engine == "llm", r.warnings
-    assert [q.answer for q in r.questions] == ["Rubisco"]  # ungrounded T/F and broken MCQ are dropped
-    assert r.questions[0].page == 2
+    llm_qs = [q for q in r.questions if q.engine == "llm"]
+    assert [q.answer for q in llm_qs] == ["Rubisco"]  # ungrounded T/F and broken MCQ are dropped
+    assert llm_qs[0].page == 2
+    # too few LLM questions survived, so the quiz is topped up from the classic engine
+    assert len(r.questions) == 3 and any("rest come from the classic engine" in w for w in r.warnings)
     assert r.flashcards and r.flashcards[0].front == "Photolysis"
     client = fake_ollama.instances[0]
     assert client.host == "https://ollama.com" and client.headers["Authorization"] == "Bearer test-key"
@@ -243,7 +246,7 @@ def test_cli_generate_and_evaluate(tmp_path, monkeypatch):
         assert (tmp_path / name).stat().st_size > 0
     out = tmp_path / "eval.json"
     assert main(["evaluate", str(SAMPLE), "--refs", str(ROOT / "data" / "reference_questions.json"),
-                 "-n", "6", "--out", str(out)]) == 0
+                 "-n", "6", "--runs", "2", "--out", str(out)]) == 0
     rows = json.loads(out.read_text())
     assert [r["system"] for r in rows][0] == "naive cloze baseline"
 
@@ -295,4 +298,51 @@ def test_real_ollama_client_against_local_fake_server(monkeypatch):
     assert seen["body"]["model"] == "gpt-oss:20b" and seen["body"]["stream"] is False
     assert seen["body"]["format"]["required"] == ["questions", "flashcards"]
     assert r.engine == "llm", r.warnings
-    assert [q.answer for q in r.questions] == ["Rubisco"]
+    assert [q.answer for q in r.questions if q.engine == "llm"] == ["Rubisco"]
+
+
+MESSY_REPLY = """Here is your quiz:
+```json
+{"quiz": {"questions": [
+  {"type": "Multiple Choice", "question": "Which enzyme catalyses carbon fixation?",
+   "choices": {"A": "Amylase", "B": "Rubisco", "C": "Lipase", "D": "Catalase"}, "correct_answer": "B",
+   "source": "Rubisco is the enzyme that catalyses carbon fixation."},
+  {"question_type": "True/False", "statement": "Photolysis releases oxygen, protons and electrons.",
+   "answer": true, "evidence": "Photolysis releases oxygen, protons and electrons."},
+  {"type": "fill in the blank", "question": "The Calvin cycle takes place in the ___.",
+   "answer": "stroma"},
+  {"type": "multiple-choice", "question": "What is the main energy currency of the cell?",
+   "options": ["A) Glucose", "B) ATP", "C) Starch", "D) NADPH"], "answer": "B) ATP"}
+ ],
+ "flashcards": [{"term": "Rubisco", "definition": "The enzyme that catalyses carbon fixation."}]}}
+```"""
+
+
+def test_llm_accepts_messy_real_world_reply(fake_ollama, monkeypatch):
+    """Open models rename fields, use letters for answers and wrap JSON in prose; all of it should parse."""
+    fake_ollama.reply = MESSY_REPLY
+    monkeypatch.setenv("OLLAMA_API_KEY", "test-key")
+    r = generate(str(SAMPLE), n_questions=4, n_flashcards=1, engine="llm", seed=1)
+    assert r.engine == "llm", r.warnings
+    got = {q.answer: q for q in r.questions if q.engine == "llm"}
+    assert set(got) == {"Rubisco", "True", "stroma", "ATP"}
+    assert got["Rubisco"].qtype == "mcq" and got["Rubisco"].options == ["Amylase", "Rubisco", "Lipase", "Catalase"]
+    assert got["ATP"].options == ["Glucose", "ATP", "Starch", "NADPH"]
+    assert got["True"].qtype == "true_false" and got["stroma"].qtype == "fill_blank"
+    assert "_____" in got["stroma"].question
+    # no quote was given for the fill-in-the-blank, so it is grounded on the sentence containing the answer
+    assert "Calvin cycle" in got["stroma"].source_sentence and got["stroma"].page == 2
+    assert r.flashcards[0].front == "Rubisco"
+
+
+def test_each_generation_gives_different_questions():
+    first = generate(str(SAMPLE), n_questions=8, n_flashcards=5, engine="classic")
+    second = generate(str(SAMPLE), n_questions=8, n_flashcards=5, engine="classic",
+                      avoid={q.source_sentence for q in first.questions})
+    a = {q.source_sentence for q in first.questions}
+    b = {q.source_sentence for q in second.questions}
+    assert len(a & b) <= 1, (a & b)  # the second quiz moves on to new sentences
+    # a fixed seed still reproduces the same quiz (used by the evaluation)
+    x = generate(str(SAMPLE), n_questions=6, engine="classic", seed=7)
+    y = generate(str(SAMPLE), n_questions=6, engine="classic", seed=7)
+    assert [q.question for q in x.questions] == [q.question for q in y.questions]

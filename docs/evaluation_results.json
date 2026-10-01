@@ -1,16 +1,53 @@
 [
   {
     "system": "naive cloze baseline",
-    "n_questions": 15,
-    "rougeL_f1": 0.4176,
-    "bleu4": 0.1048,
-    "reference_concept_coverage": 0.3462,
-    "answer_is_key_concept": 0.2667,
-    "distractor_is_key_concept": 0.0833,
+    "runs": 5,
+    "n_questions": 15.0,
+    "rougeL_f1": 0.4569,
+    "rougeL_f1_range": [
+      0.3841,
+      0.5129
+    ],
+    "bleu4": 0.1728,
+    "bleu4_range": [
+      0.1048,
+      0.2411
+    ],
+    "reference_concept_coverage": 0.4692,
+    "reference_concept_coverage_range": [
+      0.3462,
+      0.5769
+    ],
+    "answer_is_key_concept": 0.1467,
+    "answer_is_key_concept_range": [
+      0.0,
+      0.2667
+    ],
+    "distractor_is_key_concept": 0.075,
+    "distractor_is_key_concept_range": [
+      0.0417,
+      0.125
+    ],
     "grounded_rate": 1.0,
+    "grounded_rate_range": [
+      1.0,
+      1.0
+    ],
     "answerable_rate": 1.0,
+    "answerable_rate_range": [
+      1.0,
+      1.0
+    ],
     "mcq_validity": 1.0,
-    "diversity_1_minus_mean_jaccard": 0.8248,
+    "mcq_validity_range": [
+      1.0,
+      1.0
+    ],
+    "diversity_1_minus_mean_jaccard": 0.8273,
+    "diversity_1_minus_mean_jaccard_range": [
+      0.8183,
+      0.8313
+    ],
     "type_distribution": {
       "mcq": 8,
       "fill_blank": 7
@@ -24,56 +61,132 @@
   },
   {
     "system": "classic NLP, no quality filter",
-    "n_questions": 15,
-    "rougeL_f1": 0.5162,
-    "bleu4": 0.1287,
-    "reference_concept_coverage": 0.8077,
-    "answer_is_key_concept": 1.0,
-    "distractor_is_key_concept": 0.5,
+    "runs": 5,
+    "n_questions": 15.0,
+    "rougeL_f1": 0.5329,
+    "rougeL_f1_range": [
+      0.4967,
+      0.5705
+    ],
+    "bleu4": 0.1128,
+    "bleu4_range": [
+      0.0772,
+      0.1521
+    ],
+    "reference_concept_coverage": 0.7923,
+    "reference_concept_coverage_range": [
+      0.7692,
+      0.8077
+    ],
+    "answer_is_key_concept": 0.8393,
+    "answer_is_key_concept_range": [
+      0.7143,
+      1.0
+    ],
+    "distractor_is_key_concept": 0.7167,
+    "distractor_is_key_concept_range": [
+      0.5556,
+      0.8333
+    ],
     "grounded_rate": 1.0,
+    "grounded_rate_range": [
+      1.0,
+      1.0
+    ],
     "answerable_rate": 1.0,
+    "answerable_rate_range": [
+      1.0,
+      1.0
+    ],
     "mcq_validity": 1.0,
-    "diversity_1_minus_mean_jaccard": 0.9059,
+    "mcq_validity_range": [
+      1.0,
+      1.0
+    ],
+    "diversity_1_minus_mean_jaccard": 0.887,
+    "diversity_1_minus_mean_jaccard_range": [
+      0.8748,
+      0.8917
+    ],
     "type_distribution": {
-      "mcq": 4,
-      "true_false": 4,
       "fill_blank": 4,
-      "short_answer": 3
+      "short_answer": 4,
+      "mcq": 3,
+      "true_false": 4
     },
     "difficulty_distribution": {
-      "easy": 6,
-      "medium": 9
+      "hard": 7,
+      "medium": 5,
+      "easy": 3
     },
     "bloom_distribution": {
-      "understand": 8,
-      "remember": 7
+      "remember": 8,
+      "understand": 7
     }
   },
   {
     "system": "classic NLP (full pipeline)",
-    "n_questions": 15,
-    "rougeL_f1": 0.5162,
-    "bleu4": 0.1287,
-    "reference_concept_coverage": 0.8077,
-    "answer_is_key_concept": 1.0,
-    "distractor_is_key_concept": 0.5,
+    "runs": 5,
+    "n_questions": 15.0,
+    "rougeL_f1": 0.5329,
+    "rougeL_f1_range": [
+      0.4967,
+      0.5705
+    ],
+    "bleu4": 0.1128,
+    "bleu4_range": [
+      0.0772,
+      0.1521
+    ],
+    "reference_concept_coverage": 0.7923,
+    "reference_concept_coverage_range": [
+      0.7692,
+      0.8077
+    ],
+    "answer_is_key_concept": 0.8393,
+    "answer_is_key_concept_range": [
+      0.7143,
+      1.0
+    ],
+    "distractor_is_key_concept": 0.7167,
+    "distractor_is_key_concept_range": [
+      0.5556,
+      0.8333
+    ],
     "grounded_rate": 1.0,
+    "grounded_rate_range": [
+      1.0,
+      1.0
+    ],
     "answerable_rate": 1.0,
+    "answerable_rate_range": [
+      1.0,
+      1.0
+    ],
     "mcq_validity": 1.0,
-    "diversity_1_minus_mean_jaccard": 0.9059,
+    "mcq_validity_range": [
+      1.0,
+      1.0
+    ],
+    "diversity_1_minus_mean_jaccard": 0.887,
+    "diversity_1_minus_mean_jaccard_range": [
+      0.8748,
+      0.8917
+    ],
     "type_distribution": {
-      "mcq": 4,
-      "true_false": 4,
       "fill_blank": 4,
-      "short_answer": 3
+      "short_answer": 4,
+      "mcq": 3,
+      "true_false": 4
     },
     "difficulty_distribution": {
-      "easy": 6,
-      "medium": 9
+      "hard": 7,
+      "medium": 5,
+      "easy": 3
     },
     "bloom_distribution": {
-      "understand": 8,
-      "remember": 7
+      "remember": 8,
+      "understand": 7
     }
   }
 ]
